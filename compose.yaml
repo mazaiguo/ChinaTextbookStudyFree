@@ -1,36 +1,11 @@
-# =============================================================================
-# ChinaTextbookStudyFree — Docker Compose 部署配置
-# 适用场景:飞牛 fnOS NAS(应用中心 → Docker → Compose 项目)或任意 Docker 环境
-# =============================================================================
-#
-# 【飞牛 NAS 快速部署步骤】
-#   1. 打开 fnOS 网页管理界面 → 「Docker」→「Compose 项目」→「新建项目」
-#   2. 项目名称自定(如 china-textbook-study-free),把本文件内容粘贴进 YAML 编辑框,
-#      或先在文件管理器中把整个仓库放到 NAS 上,再选择本 compose.yaml 所在目录
-#   3. 点击「部署」,首次会自动从 GHCR 拉取镜像(国内网络若拉取失败见下方「镜像加速说明」)
-#   4. 浏览器访问 http://NAS的IP:8080 即可;若 8080 被占用,在下方 ports 中改左侧主机端口即可
-#
-# 【镜像加速说明(GHCR 在国内访问困难时)】
-#   - 方式一:在 fnOS「Docker → 镜像仓库」中配置代理或镜像加速地址后手动拉取
-#   - 方式二:在能联网的机器上执行  docker pull ghcr.io/mazaiguo/chinatextbookstudyfree:latest
-#            再导出  docker save -o cstf.tar ghcr.io/mazaiguo/chinatextbookstudyfree:latest
-#            拷贝到 NAS 后用 fnOS 终端执行  docker load -i cstf.tar
-#            然后注释掉本服务中的 image: 行以外的拉取需求(image 保持不变即可直接使用本地镜像)
-#   - 方式三:在 NAS 上克隆源码本地构建,见下方 build: 段落注释
-#
-# 【可用环境变量】可在本项目目录下创建 .env 文件写入,或在 fnOS 部署界面「环境变量」中填写
-#   WEB_PORT            主机访问端口,默认 8080
-#   WEB_BIND_ADDRESS    主机绑定地址,默认 127.0.0.1;局域网其他设备需要访问时改为 0.0.0.0
-#   ASSETS_RELEASE      仅本地构建时生效,对应 GitHub Release 教学资源版本号
-#
-# =============================================================================
-
 services:
   web:
     # CI(.github/workflows/docker.yml)在推送 v* 标签时自动构建并推送到 GHCR 的镜像。
     # 标签策略:0.1.0(精确版本)/ 0.1(次版本浮动)/ latest(最新稳定版)。
     # NAS 部署建议使用 latest;需要固定回滚版本时改为具体版本号,如 :0.1.0
-    image: ghcr.io/mazaiguo/chinatextbookstudyfree:latest
+    # ghcr.nju.edu.cn/mazaiguo/chinatextbookstudyfree:latest
+    # ghcr.io/mazaiguo/chinatextbookstudyfree:latest
+    image: ghcr.nju.edu.cn/mazaiguo/chinatextbookstudyfree:latest
 
     # ---- 本地构建(可选)----
     # 在 NAS/本地有完整源码、且不想从 GHCR 拉取时,取消下方注释即可从 Dockerfile 构建。
@@ -51,16 +26,18 @@ services:
     # 若为 ARM 架构 NAS,需先在 x86 机器上用 buildx --platform linux/arm64 交叉构建并推送。
     platform: linux/amd64
 
-    # 端口映射:"主机IP:主机端口:容器端口"。容器内 nginx 固定监听 8080(不可改),
-    # 冒号左侧可改。127.0.0.1 表示仅 NAS 本机访问;局域网开放请用 0.0.0.0。
-    # 飞牛 fnOS 管理面板默认占用 5666,8080 通常无冲突;如有冲突可改为 8090、9080 等。
+    # 端口映射:"主机IP:主机端口:容器端口"。镜像内 nginx 固定监听 8080(见 docker/nginx.conf,不可改),
+    # 冒号左侧的主机端口可改,默认 5010。默认 0.0.0.0:监听所有网卡,局域网及 cloudflared 容器
+    # (隧道指向 http://NAS内网IP:5010)均可访问;仅允许 NAS 本机访问时改回 127.0.0.1。
+    # 飞牛 fnOS 管理面板默认占用 5666,5010 通常无冲突;如有冲突可改为 8090、9080 等。
     ports:
-      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-5010}:8080"
 
     # 开机自启:容器随 Docker 守护进程自动拉起,异常退出自动重启,fnOS 重启后服务自动恢复
     restart: unless-stopped
 
-    # 健康检查:Dockerfile 已内置 /healthz 检查,此处显式声明便于 fnOS 界面显示健康状态。
+    # 健康检查:容器内 nginx 监听 8080(与 Dockerfile 内置 HEALTHCHECK 一致),
+    # 此处显式声明便于 fnOS 界面显示健康状态。
     # 每 30 秒探测一次,失败 3 次后标记 unhealthy(fnOS「容器」页面可见)
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
@@ -94,10 +71,15 @@ services:
     # 或使用「快速打包已有站点」方式:先在本地 npm run build 生成 apps/web/out,
     # 再用 docker build --target prebuilt --build-context site=./apps/web/out . 打包
 
-    # 独立网络,避免与其他 Compose 项目容器名/端口冲突
+    # 独立网络,避免与其他 Compose 项目容器名/端口冲突。
+    # 网络固定命名为 cstf(compose 不再加项目名前缀),便于外部容器接入,例如 cloudflared:
+    #   docker network connect cstf <cloudflared容器名>
+    # 接入后 Cloudflare 隧道 Service URL 填 http://china-textbook-study-free:8080,
+    # 容器间直连,无需经过主机端口。
     networks:
       - cstf
 
 networks:
   cstf:
     driver: bridge
+    name: cstf

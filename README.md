@@ -151,7 +151,7 @@
 
 ## 🚀 快速开始
 
-**Docker 家庭部署**：包含 Dockerfile 的当前代码版本支持 `docker compose up -d --build`，会自动下载完整资源并构建，无需自行安装 Node.js、Python 或 FFmpeg；见 [Docker 安装说明](docs/docker.md)。本节以下命令用于启动当前 `main` 版本。
+**Docker 家庭部署**：`docker compose up -d` 默认拉取 GHCR 现成镜像（含全部资源，约 4.3 GB），无需安装 Node.js、Python 或 FFmpeg，也无需本地构建；启动后访问 `http://localhost:5010`，支持 NAS 部署与 Cloudflare Tunnel 公网接入。见 [Docker 安装说明](docs/docker.md)。本节以下命令用于从源码启动当前 `main` 版本。
 
 **安卓自行安装**：用 Android Studio 打开 `apps/android`，或从 GitHub Actions 下载构建成功的调试 APK。当前是加载 HTTPS 课堂的在线客户端；构建步骤、录音权限和已知限制见 [安卓工程说明](docs/android.md)。
 
